@@ -38,6 +38,9 @@ public class HexDumpProxyFrontendHandler extends ChannelInboundHandlerAdapter {
     // the outboundChannel will use the same EventLoop (and therefore Thread) as the inboundChannel.
     private Channel outboundChannel;
 
+    // it is an example
+    private int messageCounter = 0;
+
     public HexDumpProxyFrontendHandler(String remoteHost, int remotePort) {
         this.remoteHost = remoteHost;
         this.remotePort = remotePort;
@@ -71,6 +74,24 @@ public class HexDumpProxyFrontendHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void channelRead(final ChannelHandlerContext ctx, Object msg) {
+        messageCounter += 1;
+        // business logic to stop auto reading
+        if (messageCounter % 3 == 0) {
+            ctx.channel().config().setAutoRead(false);
+            // ai detecting when you are ready again
+            Thread t = new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        Thread.sleep(1000 * 5);
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                    ctx.channel().config().setAutoRead(true);
+                }
+            });
+            t.start();
+        }
         if (outboundChannel.isActive()) {
             outboundChannel.writeAndFlush(msg);
         } else {
