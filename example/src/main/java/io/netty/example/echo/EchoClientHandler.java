@@ -20,6 +20,9 @@ import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 
+import java.nio.charset.Charset;
+import java.util.Date;
+
 /**
  * Handler implementation for the echo client.  It initiates the ping-pong
  * traffic between the echo client and server by sending the first message to
@@ -27,26 +30,30 @@ import io.netty.channel.ChannelInboundHandlerAdapter;
  */
 public class EchoClientHandler extends ChannelInboundHandlerAdapter {
 
-    private final ByteBuf firstMessage;
+    // only an example
+    private int counter = 0;
 
     /**
      * Creates a client-side handler.
      */
     public EchoClientHandler() {
-        firstMessage = Unpooled.buffer(EchoClient.SIZE);
-        for (int i = 0; i < firstMessage.capacity(); i ++) {
-            firstMessage.writeByte((byte) i);
-        }
     }
 
     @Override
     public void channelActive(ChannelHandlerContext ctx) {
-        ctx.writeAndFlush(firstMessage);
+        ctx.writeAndFlush(writeIntAsString(counter++));
     }
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
-        ctx.write(msg);
+        System.out.println(new Date() + ": " + ((ByteBuf) msg).toString(Charset.defaultCharset()));
+        ctx.write(writeIntAsString(counter++));
+        // easy to see in the logs
+        try {
+            Thread.sleep(1000);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override
@@ -59,5 +66,15 @@ public class EchoClientHandler extends ChannelInboundHandlerAdapter {
         // Close the connection when an exception is raised.
         cause.printStackTrace();
         ctx.close();
+    }
+
+    private ByteBuf writeIntAsString(int number) {
+        // only an example.. can be reused
+        final ByteBuf firstMessage = Unpooled.buffer(EchoClient.SIZE);
+        byte[] value = Integer.toString(number).getBytes(Charset.defaultCharset());
+        for (int i = 0; i < value.length; i++) {
+            firstMessage.writeByte(value[i]);
+        }
+        return firstMessage;
     }
 }
