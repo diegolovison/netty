@@ -16,6 +16,8 @@
 package io.netty.example.proxy;
 
 import io.netty.bootstrap.Bootstrap;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufInputStream;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
@@ -23,6 +25,9 @@ import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelOption;
+import io.netty.handler.stream.ChunkedStream;
+
+import java.io.IOException;
 
 public class HexDumpProxyFrontendHandler extends ChannelInboundHandlerAdapter {
 
@@ -47,15 +52,15 @@ public class HexDumpProxyFrontendHandler extends ChannelInboundHandlerAdapter {
         b.group(inboundChannel.eventLoop())
          .channel(ctx.channel().getClass())
          .handler(new HexDumpProxyBackendHandler(inboundChannel))
-         .option(ChannelOption.AUTO_READ, false);
+         .option(ChannelOption.AUTO_READ, true);
         ChannelFuture f = b.connect(remoteHost, remotePort);
         outboundChannel = f.channel();
         f.addListener(new ChannelFutureListener() {
             @Override
             public void operationComplete(ChannelFuture future) {
                 if (future.isSuccess()) {
-                    // connection complete start to read first data
-                    inboundChannel.read();
+                    // connection complete start to flush that will call channelRead
+                    inboundChannel.flush();
                 } else {
                     // Close the connection if the connection attempt has failed.
                     inboundChannel.close();
@@ -67,17 +72,15 @@ public class HexDumpProxyFrontendHandler extends ChannelInboundHandlerAdapter {
     @Override
     public void channelRead(final ChannelHandlerContext ctx, Object msg) {
         if (outboundChannel.isActive()) {
-            outboundChannel.writeAndFlush(msg).addListener(new ChannelFutureListener() {
-                @Override
-                public void operationComplete(ChannelFuture future) {
-                    if (future.isSuccess()) {
-                        // was able to flush out data, start to read the next chunk
-                        ctx.channel().read();
-                    } else {
-                        future.channel().close();
-                    }
-                }
-            });
+            outboundChannel.writeAndFlush(msg);
+        } else {
+            // acumulate in the inboundChannel
+            ByteBuf bb = (ByteBuf) msg;
+            try (ByteBufInputStream stream = new ByteBufInputStream(bb)) {
+                ctx.channel().write(new ChunkedStream(stream));
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
         }
     }
 
